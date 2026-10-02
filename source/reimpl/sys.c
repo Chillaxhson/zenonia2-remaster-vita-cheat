@@ -20,6 +20,7 @@
 
 #include "utils/utils.h"
 #include "utils/logger.h"
+#include <psp2/io/fcntl.h>
 
 #define BIONIC_CLOCK_REALTIME           0
 #define BIONIC_CLOCK_MONOTONIC          1
@@ -103,15 +104,36 @@ void syscall(int c) {
 
 void __stack_chk_fail_soloader() {
     l_fatal("Stack collapsed at address %p", __builtin_return_address(0));
+    SceUID fd = sceIoOpen(DATA_PATH "crash.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+    if (fd >= 0) {
+        char msg[128];
+        sceClibSnprintf(msg, sizeof(msg), "Stack collapsed at address %p\n", __builtin_return_address(0));
+        sceIoWrite(fd, msg, strlen(msg));
+        sceIoClose(fd);
+    }
 }
 
 void abort_soloader() {
     l_fatal("Abort called from address %p", __builtin_return_address(0));
+    SceUID fd = sceIoOpen(DATA_PATH "crash.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+    if (fd >= 0) {
+        char msg[128];
+        sceClibSnprintf(msg, sizeof(msg), "Abort called from address %p\n", __builtin_return_address(0));
+        sceIoWrite(fd, msg, strlen(msg));
+        sceIoClose(fd);
+    }
     abort();
 }
 
 void exit_soloader(int status) {
     l_fatal("Exit(%i) called from %p", status, __builtin_return_address(0));
+    SceUID fd = sceIoOpen(DATA_PATH "crash.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+    if (fd >= 0) {
+        char msg[128];
+        sceClibSnprintf(msg, sizeof(msg), "Exit(%i) called from %p\n", status, __builtin_return_address(0));
+        sceIoWrite(fd, msg, strlen(msg));
+        sceIoClose(fd);
+    }
     exit(status);
 }
 

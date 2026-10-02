@@ -33,38 +33,49 @@
 #include "reimpl/bits/_struct_converters.c"
 
 FILE * fopen_soloader(const char * filename, const char * mode) {
+    if (!filename) return NULL;
     const char *target = filename;
     char new_path[256];
 
-    l_warn("filename (%s)", filename);
+    l_debug("filename (%s)", filename);
 
     if (strcmp(filename, "/proc/cpuinfo") == 0) {
         target = "app0:/cpuinfo";
     } else if (strcmp(filename, "/proc/meminfo") == 0) {
         target = "app0:/meminfo";
-    } else if (strcmp(filename, "/option.sav") == 0) {
-        snprintf(new_path, sizeof(new_path), "%s/option.sav", DATA_PATH);
+    } else if (strncmp(filename, "ux0:", 4) == 0 || strncmp(filename, "app0:", 5) == 0) {
+        target = filename;
+    } else if (strcmp(filename, "/option.sav") == 0 || strcmp(filename, "option.sav") == 0) {
+        snprintf(new_path, sizeof(new_path), "%soption.sav", DATA_PATH);
         target = new_path;
-    } else if (strncmp(filename, "/Save", 5) == 0 && strstr(filename, ".dat")) {
+    } else if (strstr(filename, "Save") && strstr(filename, ".dat")) {
+        const char *p = strstr(filename, "Save");
         int slot = 0;
-        if (sscanf(filename, "/Save%d.dat", &slot) == 1) {
-            snprintf(new_path, sizeof(new_path), "%s/Save%d.dat", DATA_PATH, slot);
+        if (sscanf(p, "Save%d.dat", &slot) == 1) {
+            snprintf(new_path, sizeof(new_path), "%sSave%d.dat", DATA_PATH, slot);
             target = new_path;
         }
     }
 
     if (target != filename)
-        printf("Redirecting %s to %s\n", filename, target);
+        l_info("Redirecting %s to %s", filename, target);
+
+    char bin_mode[16];
+    const char *final_mode = mode;
+    if (mode && !strchr(mode, 'b')) {
+        snprintf(bin_mode, sizeof(bin_mode), "%sb", mode);
+        final_mode = bin_mode;
+    }
 
 #ifdef USE_SCELIBC_IO
-    FILE* ret = sceLibcBridge_fopen(target, mode);
+    FILE* ret = sceLibcBridge_fopen(target, final_mode);
 #else
-    FILE* ret = fopen(target, mode);
+    FILE* ret = fopen(target, final_mode);
 #endif
     if (ret)
-        l_debug("fopen(%s, %s): %p", target, mode, ret);
+        l_debug("fopen(%s, %s): %p", target, final_mode, ret);
     else
-        l_warn("fopen(%s, %s): %p", target, mode, ret);
+        l_warn("fopen(%s, %s): %p", target, final_mode, ret);
     return ret;
 }
 
@@ -87,11 +98,33 @@ int open_soloader(const char * path, int oflag, ...) {
     }
 
     oflag = oflags_bionic_to_newlib(oflag);
-    int ret = open(path, oflag, mode);
+
+    const char *target = path;
+    char new_path[256];
+    if (strncmp(path, "ux0:", 4) != 0 && strncmp(path, "app0:", 5) != 0) {
+        if (strcmp(path, "/option.sav") == 0 || strcmp(path, "option.sav") == 0) {
+            snprintf(new_path, sizeof(new_path), "%soption.sav", DATA_PATH);
+            target = new_path;
+        } else if (strstr(path, "Save") && strstr(path, ".dat")) {
+            const char *p = strstr(path, "Save");
+            int slot = 0;
+            if (sscanf(p, "Save%d.dat", &slot) == 1) {
+                snprintf(new_path, sizeof(new_path), "%sSave%d.dat", DATA_PATH, slot);
+                target = new_path;
+            }
+        } else {
+            const char *rel = path;
+            while (*rel == '/') rel++;
+            snprintf(new_path, sizeof(new_path), "%s%s", DATA_PATH, rel);
+            target = new_path;
+        }
+    }
+
+    int ret = open(target, oflag, mode);
     if (ret >= 0)
-        l_debug("open(%s, %x): %i", path, oflag, ret);
+        l_debug("open(%s, %x): %i", target, oflag, ret);
     else
-        l_warn("open(%s, %x): %i", path, oflag, ret);
+        l_warn("open(%s, %x): %i", target, oflag, ret);
     return ret;
 }
 
@@ -107,6 +140,7 @@ int fstat_soloader(int fd, stat64_bionic * buf) {
 }
 
 int stat_soloader(const char * path, stat64_bionic * buf) {
+    if (!path) return -1;
     char new_path[256];
 
     if (strcmp(path, "/system/lib/libOpenSLES.so") == 0) {
@@ -114,20 +148,34 @@ int stat_soloader(const char * path, stat64_bionic * buf) {
         return 0;
     }
 
-    if(strstr(path, "Save")){
-        snprintf(new_path, sizeof(new_path), "%s%s", "ux0:/data/zenonia2", path + 1);
-    } else {
-        snprintf(new_path, sizeof(new_path), "%s", path);
+    const char *target = path;
+    if (strncmp(path, "ux0:", 4) != 0 && strncmp(path, "app0:", 5) != 0) {
+        if (strcmp(path, "/option.sav") == 0 || strcmp(path, "option.sav") == 0) {
+            snprintf(new_path, sizeof(new_path), "%soption.sav", DATA_PATH);
+            target = new_path;
+        } else if (strstr(path, "Save") && strstr(path, ".dat")) {
+            const char *p = strstr(path, "Save");
+            int slot = 0;
+            if (sscanf(p, "Save%d.dat", &slot) == 1) {
+                snprintf(new_path, sizeof(new_path), "%sSave%d.dat", DATA_PATH, slot);
+                target = new_path;
+            }
+        } else {
+            const char *rel = path;
+            while (*rel == '/') rel++;
+            snprintf(new_path, sizeof(new_path), "%s%s", DATA_PATH, rel);
+            target = new_path;
+        }
     }
 
     struct stat st;
-    int res = stat(new_path, &st);
+    int res = stat(target, &st);
 
     if (res == 0) {
         stat_newlib_to_bionic(&st, buf);
     }
 
-    l_debug("stat(%s): %i", new_path, res);
+    l_debug("stat(%s): %i", target, res);
     return res;
 }
 

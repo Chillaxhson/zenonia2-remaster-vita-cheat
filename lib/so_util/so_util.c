@@ -62,12 +62,14 @@ static so_module *head = NULL, *tail = NULL;
 
 so_hook hook_thumb(uintptr_t addr, uintptr_t dst) {
     so_hook h;
+    memset(&h, 0, sizeof(h));
     sceClibPrintf("THUMB HOOK\n");
     if (addr == 0)
         return h;
     h.thumb_addr = addr;
     addr &= ~1;
     if (addr & 2) {
+        kuKernelCpuUnrestrictedMemcpy(&h.orig_nop, (void *)addr, sizeof(h.orig_nop));
         uint16_t nop = 0xbf00;
         kuKernelCpuUnrestrictedMemcpy((void *)addr, &nop, sizeof(nop));
         addr += 2;
@@ -79,22 +81,24 @@ so_hook hook_thumb(uintptr_t addr, uintptr_t dst) {
     h.patch_instr[1] = dst;
     kuKernelCpuUnrestrictedMemcpy(&h.orig_instr, (void *)addr, sizeof(h.orig_instr));
     kuKernelCpuUnrestrictedMemcpy((void *)addr, h.patch_instr, sizeof(h.patch_instr));
+    kuKernelFlushCaches((void *)(h.thumb_addr & ~1), (addr - (h.thumb_addr & ~1)) + sizeof(h.patch_instr));
 
     return h;
 }
 
 so_hook hook_arm(uintptr_t addr, uintptr_t dst) {
     so_hook h;
+    memset(&h, 0, sizeof(h));
     sceClibPrintf("ARM HOOK\n");
     if (addr == 0)
         return h;
-    uint32_t hook[2];
     h.thumb_addr = 0;
     h.addr = addr;
     h.patch_instr[0] = 0xe51ff004; // LDR PC, [PC, #-0x4]
     h.patch_instr[1] = dst;
     kuKernelCpuUnrestrictedMemcpy(&h.orig_instr, (void *)addr, sizeof(h.orig_instr));
     kuKernelCpuUnrestrictedMemcpy((void *)addr, h.patch_instr, sizeof(h.patch_instr));
+    kuKernelFlushCaches((void *)addr, sizeof(h.patch_instr));
 
     return h;
 }
@@ -102,6 +106,7 @@ so_hook hook_arm(uintptr_t addr, uintptr_t dst) {
 so_hook hook_addr(uintptr_t addr, uintptr_t dst) {
     if (addr == 0) {
         so_hook h;
+        memset(&h, 0, sizeof(h));
         return h;
     }
 

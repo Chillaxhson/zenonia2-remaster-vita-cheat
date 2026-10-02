@@ -9,6 +9,8 @@
 
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/threadmgr.h>
+#include <psp2/io/fcntl.h>
+#include <string.h>
 
 #include <stdbool.h>
 #include <stdatomic.h>
@@ -74,7 +76,32 @@ void _log_print(int t, const char* fmt, ...) {
     va_start(list, fmt);
     sceClibVsnprintf(buffer_b, sizeof(buffer_b), buffer_a, list);
     va_end(list);
-    sceClibPrintf(buffer_b);
+    sceClibPrintf("%s", buffer_b);
+
+    // Also persist log to boot.log on storage
+    va_list flist;
+    va_start(flist, fmt);
+    const char *pfx = "INFO ";
+    switch (t) {
+        case LT_DEBUG:   pfx = "DEBUG"; break;
+        case LT_INFO:    pfx = "INFO "; break;
+        case LT_WARN:    pfx = "WARN "; break;
+        case LT_ERROR:   pfx = "ERROR"; break;
+        case LT_FATAL:   pfx = "FATAL"; break;
+        case LT_SUCCESS: pfx = "SUCC "; break;
+        case LT_WAIT:    pfx = "WAIT "; break;
+    }
+    char buf_file[2048];
+    char fmt_file[2048];
+    sceClibSnprintf(fmt_file, sizeof(fmt_file), "[%s] %s\n", pfx, fmt);
+    int flen = sceClibVsnprintf(buf_file, sizeof(buf_file), fmt_file, flist);
+    va_end(flist);
+
+    SceUID fd = sceIoOpen(DATA_PATH "boot.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
+    if (fd >= 0) {
+        sceIoWrite(fd, buf_file, flen > 0 ? flen : strlen(buf_file));
+        sceIoClose(fd);
+    }
 
     if (atomic_load_explicit(&_log_mutex_ready, memory_order_relaxed)) {
         sceKernelUnlockLwMutex(&_log_mutex, 1);

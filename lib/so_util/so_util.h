@@ -11,6 +11,8 @@
 typedef struct {
     uintptr_t addr;
     uintptr_t thumb_addr;
+    uint16_t orig_nop;
+    uint16_t pad;
     uint32_t orig_instr[2];
     uint32_t patch_instr[2];
 } so_hook;
@@ -66,9 +68,18 @@ void so_initialize(so_module *mod);
 uintptr_t so_symbol(so_module *mod, const char *symbol);
 
 #define SO_CONTINUE(type, h, ...) ({ \
+  if (h.thumb_addr & 2) { \
+    kuKernelCpuUnrestrictedMemcpy((void *)(h.thumb_addr & ~1), &h.orig_nop, sizeof(h.orig_nop)); \
+    kuKernelFlushCaches((void *)(h.thumb_addr & ~1), sizeof(h.orig_nop)); \
+  } \
   kuKernelCpuUnrestrictedMemcpy((void *)h.addr, h.orig_instr, sizeof(h.orig_instr)); \
   kuKernelFlushCaches((void *)h.addr, sizeof(h.orig_instr)); \
   type r = h.thumb_addr ? ((type(*)())h.thumb_addr)(__VA_ARGS__) : ((type(*)())h.addr)(__VA_ARGS__); \
+  if (h.thumb_addr & 2) { \
+    uint16_t _nop = 0xbf00; \
+    kuKernelCpuUnrestrictedMemcpy((void *)(h.thumb_addr & ~1), &_nop, sizeof(_nop)); \
+    kuKernelFlushCaches((void *)(h.thumb_addr & ~1), sizeof(_nop)); \
+  } \
   kuKernelCpuUnrestrictedMemcpy((void *)h.addr, h.patch_instr, sizeof(h.patch_instr)); \
   kuKernelFlushCaches((void *)h.addr, sizeof(h.patch_instr)); \
   r; \

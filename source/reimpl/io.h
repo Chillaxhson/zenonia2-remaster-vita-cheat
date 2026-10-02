@@ -40,14 +40,14 @@ extern "C" {
 #define DT_WHT 14
 #endif
 
-typedef struct __attribute__((__packed__)) stat64_bionic {
+typedef struct stat64_bionic {
     unsigned long long st_dev;
     unsigned char __pad0[4];
     unsigned long __st_ino;
     unsigned int st_mode;
-    nlink_t st_nlink;
-    uid_t st_uid;
-    gid_t st_gid;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
     unsigned long long st_rdev;
     unsigned char __pad3[4];
     long long st_size;

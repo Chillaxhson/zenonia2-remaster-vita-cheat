@@ -60,6 +60,8 @@ typedef struct {
 void controls_init();
 void controls_poll();
 
+extern uint32_t current_buttons;
+
 #define AVK_SELECT 0
 #define AVK_UP     1
 #define AVK_DOWN   2
